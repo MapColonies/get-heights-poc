@@ -1,0 +1,2 @@
+### Enqueue getHeights
+GET http://localhost:3010/getHeights
