@@ -29,8 +29,6 @@ import { Job } from "bullmq";
 //     }
 // };
 
-// [...Array(813)].map(_=> ({lat: Math.ceil(Math.random()*31450), lon: Math.ceil(Math.random()*31450)}));
-
 export const batchLargeInputArr = <T>(arr: T[], maxItemsPerBatch = 10): [T[]] => {
     const result = arr.reduce<[T[]]>(
         (resultArray, item, index) => {

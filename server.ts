@@ -1,5 +1,5 @@
 import express, { Request } from "express";
-import { Queue, QueueScheduler } from "bullmq";
+import { FlowProducer, Job, JobsOptions, Queue, QueueEvents } from "bullmq";
 import { GetHeightsJob } from "./jobs";
 
 const app = express();
@@ -8,33 +8,38 @@ const redisOptions = { host: "localhost", port: 5050 };
 
 // QUEUE SETUP
 const heightsQueue = new Queue("heightsQueue", { connection: redisOptions });
-
-const queues = {
-    heightsQueue
-};
-
-
-
-const schedulers = {
-    heightsQueue: new QueueScheduler(heightsQueue.name, {
-      connection: redisOptions
-    })
-};
+const getHeightFlowsQueue = new Queue("getHeightFlowsQueue", { connection: redisOptions });
+const getHeightsFlowProducer = new FlowProducer({ connection: redisOptions });
 
 // UTILITIES
-
-const addJobToHeightsQueue = (job: GetHeightsJob) => heightsQueue.add(job.type, job);
+const addFlowToHeightsQueue = (jobs: (GetHeightsJob & { opts?: JobsOptions })[], reqId: string) => {
+    return getHeightsFlowProducer.add({
+        name: `getHeightsFlow_${reqId}`,
+        queueName: 'getHeightFlowsQueue',
+        children: jobs.map(job => ({ queueName: 'heightsQueue', name: job.type, data: job.data, opts: job.opts }))
+    });
+}
 
 // EXPRESS SETUP
 
-app.get("/getHeights", async (req: Request<undefined, {queued: boolean}, undefined>, res) => {
-  await addJobToHeightsQueue({
-      type: "getHeights",
-      data: { pointsArr: [...Array(813)].map(_=> ({lat: Math.ceil(Math.random()*31450), lon: Math.ceil(Math.random()*31450)})) }
-  });
+app.get("/getHeights", async (req: Request<undefined, { queued: boolean }, undefined>, res) => {
+    const requestTimestamp = Date.now();
+    const batchedPointsArr = batchLargeInputArr(
+        [...Array(15_000)].map(_ => ({ lat: Math.random() * 31.45, lon: Math.random() * 31.45 }))
+        ,1000
+    );
 
-  res.json({ queued: true });
+    await addFlowToHeightsQueue(
+        batchedPointsArr.map((pointsArr, i) => ({
+            type: "getHeights",
+            data: { pointsArr, requestId: requestTimestamp.toString(), batchIndex: i }
+        })),
+        requestTimestamp.toString()
+    );
+
+    res.json({ queued: true });
 });
+
 
 // ARENA SETUP (DASHBOARD)
 
@@ -47,6 +52,12 @@ const arena = Arena(
             {
                 type: "bullmq",
                 name: heightsQueue.name,
+                hostId: "server",
+                redis: redisOptions
+            },
+            {
+                type: "bullmq",
+                name: getHeightFlowsQueue.name,
                 hostId: "server",
                 redis: redisOptions
             }
@@ -63,11 +74,12 @@ import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { ExpressAdapter } from "@bull-board/express";
 import cookieParser from "cookie-parser";
+import { batchLargeInputArr } from "./utils";
 
 const serverAdapter = new ExpressAdapter();
 
 const bullBoard = createBullBoard({
-    queues: [new BullMQAdapter(queues.heightsQueue)],
+    queues: [new BullMQAdapter(heightsQueue), new BullMQAdapter(getHeightFlowsQueue)],
     serverAdapter: serverAdapter
 });
 
