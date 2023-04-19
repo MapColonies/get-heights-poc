@@ -1,6 +1,7 @@
 import axios, { AxiosResponse } from "axios";
 import { WorkerJob } from "./jobs";
 import { Job } from "bullmq";
+import { Cartographic, TerrainProvider } from "cesium";
 
 // export const requestJokes = async (job: Job<RequestJokesJob>) => {
 //     try {
@@ -46,4 +47,46 @@ export const batchLargeInputArr = <T>(arr: T[], maxItemsPerBatch = 10): [T[]] =>
     );
 
     return result;
+};
+
+export const cartographicArrayClusteringForHeightRequests = (
+    terrainProvider: TerrainProvider,
+    positions: Cartographic[],
+    maxRequestsPerBatch = 1
+) => {
+    const positionsClustersByTile = new Map<string, Cartographic[]>();
+
+    positions.forEach(pos => {
+        // Get max level for position.
+        const maxLevelAtPos = terrainProvider.availability.computeMaximumLevelAtPosition(pos);
+
+        // Get correspond tile.
+        const posTile = terrainProvider.tilingScheme.positionToTileXY(pos, maxLevelAtPos);
+
+        // Create unique key per tile matched.
+        const positionTilePath = `${maxLevelAtPos}_${posTile?.x}_${posTile?.y}`;
+
+        // Add position to pos array in dictionary
+        const currentPosInTile = positionsClustersByTile.get(positionTilePath) ?? [];
+
+        positionsClustersByTile.set(positionTilePath, [...currentPosInTile, pos]);
+    });
+
+    // Create batches from clustered positions by max requests per batch.
+
+    const clusteredArray = Array.from(positionsClustersByTile).map(([_, val]) => val);
+    
+    // Concat arrays up to maxRequestsPerBatch per batch
+
+    const newOptimizedCluster: Cartographic[][] = [];
+
+    for(let i=0; i < clusteredArray.length; i += maxRequestsPerBatch) {
+        const sliceCount = Math.min(clusteredArray.length, i + maxRequestsPerBatch);
+        const newBatch: Cartographic[] = clusteredArray.slice(i, sliceCount).flat();
+        newOptimizedCluster.push(newBatch);
+    }
+
+
+    return newOptimizedCluster;
+
 };

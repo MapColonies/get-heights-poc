@@ -1,2 +1,5 @@
 ### Enqueue getHeights
 GET http://localhost:3010/getHeights
+
+### Using promise pool
+GET http://localhost:3010/getHeightsPromisePool

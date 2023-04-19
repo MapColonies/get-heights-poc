@@ -8,12 +8,12 @@ const workerOptions: WorkerOptions = {
       host: "localhost",
       port: 5050
   },
-  concurrency: 100
+  concurrency: 1
 };
 
 
 // Some arbitrary number of workers.
-const workersCount = 20;
+const workersCount = 1000;
 
 // Number of workers based on number of cpus in the system.
 // const workersCount = os.cpus().length;
@@ -42,7 +42,7 @@ new Worker('getHeightFlowsQueue', async job => {
         return a[1].batchIndex - b[1].batchIndex
     }))
 
-    return Object.values(sortedArray).map(val => val.pointsWithHeights);
+    return `Done: ${Object.values(sortedArray).length}`;
 }, workerOptions);
 
 
